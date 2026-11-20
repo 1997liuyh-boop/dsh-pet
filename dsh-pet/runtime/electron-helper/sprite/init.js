@@ -195,6 +195,11 @@ Object.assign(PetSprite.prototype, {
     stage.appendChild(this.videoA);
     stage.appendChild(this.videoB);
     stage.appendChild(this.hit);
+    this.throwPose = S.createThrowPose({
+      videos: () => [this.videoA, this.videoB],
+      atlasUrl: () => (this.assetRoot === 'main' ? BASE + '/pic/throw-actions.png' : null),
+    });
+    this.throwPose.prepare();
     this.el.appendChild(this.bubble);
     this.el.appendChild(this.tip);
     this.el.appendChild(stage);

@@ -102,7 +102,14 @@ test('飞行逐帧更新窗口并捎带速度', () => {
     PetSprite: Sprite,
     S: {
       throwSubsteps: () => 1,
-      throwStepRegion: (s) => ({ ...s, x: s.x + 10, atRest: false, bounced: false, screen: 0 }),
+      throwStepRegion: (s) => ({
+        ...s,
+        x: s.x + 10,
+        atRest: false,
+        bounced: false,
+        screen: 0,
+        hit: null,
+      }),
     },
     performance: { now: () => now },
     requestAnimationFrame: (fn) => ((callback = fn), 1),
@@ -119,6 +126,8 @@ test('飞行逐帧更新窗口并捎带速度', () => {
     stopDragFollow: () => {},
     stopMove: () => {},
     throwToken: 0,
+    throwRef: null,
+    throwPose: { reset: () => {}, isActive: () => false },
     throwSpaceOf: () => ({ bounds: [{ maxY: 1000 }] }),
     physics: { petCollision: false },
     sendBounds(x, y) {

@@ -10,6 +10,8 @@ import { canReadMotionSensors, shakeImpulse, subscribeShake, subscribeTilt, tilt
 import { createPositionFollow, type PositionFollow } from '../motion/position-follow.ts';
 import { createSquashDriver, type SquashDriver } from '../motion/squash.ts';
 import { createWalk, type Walk } from '../motion/walk.ts';
+import { ROUTE_PATH } from '../../../shared/constants.ts';
+import { createThrowPose } from '../../../shared/throw-pose.ts';
 import { landingSquash, throwVelocity } from '../../../shared/physics.ts';
 import type { CardLive } from './live.ts';
 import type { CardStateApi } from './state.ts';
@@ -44,6 +46,8 @@ export interface CardMotionInput {
   petId: string;
   /** 宠物根节点。 */
   root: () => HTMLDivElement | null;
+  /** 双缓冲视频的句柄。 */
+  videos: () => readonly (HTMLVideoElement | null)[];
   /** 落位后提交归一化中心，交给 React 重排。 */
   setCustomPos: CardStateApi['actions']['setCustomPos'];
   /** 换成走路动作并播一次。 */
@@ -65,7 +69,7 @@ export interface CardMotion {
   /** 停走位与位置跟随。 */
   stopMove: () => void;
   /** 从给定左上角与初速起飞。 */
-  startThrow: (px: number, py: number, vx: number, vy: number) => void;
+  startThrow: Flight['start'];
   /** 抛掷指令：角度（度）与力度倍率。 */
   applyThrow: (angleDeg: number, power: number) => void;
   /** 自主走位。 */
@@ -88,7 +92,7 @@ export function createCardMotion(rt: CardMotionRuntime) {
   const { useEffect, useRef } = rt;
 
   return function useCardMotion(input: CardMotionInput): CardMotion {
-    const { arena, card, cfgRef, live, metrics, moves, petId, root, setAnim, setOnce, setCustomPos } = input;
+    const { arena, card, cfgRef, live, metrics, moves, petId, root, setAnim, setOnce, setCustomPos, videos } = input;
 
     /** 当帧走位参数：走位驱动长期持有，每渲染就地更新，避免把尺寸与动画池闭包进旧实例。 */
     const motionRef = useRef<FlightMetrics>(metrics);
@@ -103,6 +107,16 @@ export function createCardMotion(rt: CardMotionRuntime) {
     const squashRef = useRef<SquashDriver | null>(null);
     squashRef.current ??= createSquashDriver({ facing: () => card.facingRef.current });
     const squash = squashRef.current;
+    const throwPoseRef = useRef<ReturnType<typeof createThrowPose> | null>(null);
+    throwPoseRef.current ??= createThrowPose({
+      videos,
+      atlasUrl: () => (cfgRef.current.assetRoot === 'main' ? ROUTE_PATH + '/pic/throw-actions.png' : null),
+    });
+    const throwPose = throwPoseRef.current;
+    useEffect(() => {
+      throwPose.prepare();
+      return throwPose.reset;
+    }, [throwPose]);
 
     /** 当前宠物中心的视口 X 坐标。 */
     const currentCenterX = (): number => {
@@ -129,7 +143,7 @@ export function createCardMotion(rt: CardMotionRuntime) {
       moves: () => movesRef.current,
       facing: () => card.facingRef.current,
       viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
-      isFlying: () => flightRef.current?.isFlying() ?? false,
+      isFlying: () => (flightRef.current?.isFlying() ?? false) || throwPose.isActive(),
       play: (name) => {
         setOnce(true);
         setAnim(name);
@@ -168,7 +182,13 @@ export function createCardMotion(rt: CardMotionRuntime) {
         card.customPosRef.current = center;
       },
       commitFinal: setCustomPos,
+      onVisualStart: throwPose.start,
+      onVisualFrame: throwPose.step,
+      onGesturePose: throwPose.steer,
+      onVisualFinish: throwPose.finish,
+      onVisualCancel: throwPose.reset,
       onLanding: (impactVy) => {
+        if (throwPose.isActive()) return;
         // 落地 Q 弹压的是新首帧：等前台视频就位后再压。
         const frontEl = live.current.ownAnim.frontVideo();
         if (frontEl) live.current.squash.start(frontEl, landingSquash(impactVy));
@@ -194,10 +214,16 @@ export function createCardMotion(rt: CardMotionRuntime) {
     const tiltBaselineRef = useRef<{ beta: number; gamma: number } | null>(null);
 
     /** 从给定左上角与初速起飞；先停弹簧跟随与走位，免得两套运动同时改位置。 */
-    const startThrow = (px: number, py: number, vx: number, vy: number): void => {
+    const startThrow = (
+      px: number,
+      py: number,
+      vx: number,
+      vy: number,
+      animate: Parameters<Flight['start']>[4] = false,
+    ): void => {
       live.current.drag.stopFollow();
       stopMove();
-      flight.start(px, py, vx, vy);
+      flight.start(px, py, vx, vy, animate);
     };
 
     /**

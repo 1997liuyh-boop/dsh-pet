@@ -20,6 +20,8 @@ export * from './notify.ts';
 export * from './menu.ts';
 export * from './chat/index.ts';
 export * from './physics.ts';
+export { createThrowGesture } from './throw-gesture.ts';
+export { createThrowPose } from './throw-pose.ts';
 export * from './score.ts';
 export * from './score-popup.ts';
 export * from './work-status.ts';

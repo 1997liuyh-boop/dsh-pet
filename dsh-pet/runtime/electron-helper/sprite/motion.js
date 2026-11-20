@@ -99,6 +99,7 @@ Object.assign(PetSprite.prototype, {
   /** 停止抛掷（空中被抓/点菜单/回家时定格在当前落点）。必须同时清 throwState——否则「抓住后温柔放下」
    *  会残留最后一次飞行速度，静止的宠物点一下就被误判成飞行中。 */
   stopThrow() {
+    this.throwPose.reset();
     this.throwToken++;
     if (this.throwRef !== null) {
       cancelAnimationFrame(this.throwRef);
@@ -108,15 +109,21 @@ Object.assign(PetSprite.prototype, {
   },
 
   /** 抛掷驱动：重力 + 边缘反弹 + 落地摩擦，落定后写入 customPos */
-  startThrow(px, py, vx, vy) {
+  startThrow(px, py, vx, vy, animate = false) {
+    this.stopThrow();
     this.stopDragFollow();
     this.stopMove();
     // 边界 = 工作区并集：空洞是墙，屏缝不是墙（跨屏弹跳照旧）。confineToScreen 开启时改为锁定
     // 松手这一刻所在的那块屏，飞行途中不重取；relayout 改了屏数时由 throwStepRegion 退回不锁定。
     const lockScreen = this.confineToScreen ? S.screenOfBox(this.throwSpaceOf(), px, py) : -1;
+    if (animate === 'gesture') {
+      this.startThrowGesture(px, py, vx, vy, lockScreen);
+      return;
+    }
     const token = ++this.throwToken;
     let state = { x: px, y: py, vx, vy };
     let last = performance.now();
+    if (animate) this.throwPose.start(vx, vy, last);
     let prevGrounded = false; // 落地 Q 弹：只在空中→地面转换帧触发一次
     const step = () => {
       if (this.throwToken !== token) return;
@@ -130,8 +137,10 @@ Object.assign(PetSprite.prototype, {
       // Q 弹、地面摩擦与 atRest 判定都会漏。普通甩抛算出 1 步，与单步积分逐位相同。
       const substeps = S.throwSubsteps(state.vx, state.vy, dt);
       let res = S.throwStepRegion(state, dt / substeps, sp, this.physics, lockScreen);
+      let impact = res.hit;
       for (let i = 1; i < substeps && !res.atRest; i++) {
         res = S.throwStepRegion(res, dt / substeps, sp, this.physics, lockScreen);
+        if (res.hit && (!impact || res.hit.speed > impact.speed)) impact = res.hit;
       }
       state = { x: res.x, y: res.y, vx: res.vx, vy: res.vy };
       this.throwState = state;
@@ -164,18 +173,57 @@ Object.assign(PetSprite.prototype, {
       // 落地 Q 弹：只在空中→地面转换帧触发一次，力度随冲击速度；「地面」是当前所在屏的底边。
       const curBounds = sp.bounds[res.screen] || sp.bounds[0];
       const grounded = curBounds ? res.y >= curBounds.maxY - 1 : false;
-      if (res.bounced && grounded && !prevGrounded) {
+      if (animate) {
+        this.throwPose.step(
+          {
+            vx: state.vx,
+            vy: state.vy,
+            hit: impact,
+            grounded,
+            floorGap: curBounds ? Math.max(0, curBounds.maxY - state.y) / Math.max(1, this.halfH * 2) : Infinity,
+          },
+          now,
+        );
+      }
+      if (res.bounced && grounded && !prevGrounded && !this.throwPose.isActive()) {
         const frontEl = this.front === 0 ? this.videoA : this.videoB;
         this.startSquash(frontEl, S.landingSquash(fallingVy));
       }
       prevGrounded = grounded;
       if (res.atRest) {
+        if (animate) this.throwPose.finish(now);
         this.throwRef = null;
         this.throwState = null;
         this.customPos = { rx: (this.pos.x + this.halfW) / VIEW.w, ry: (this.pos.y + this.halfH) / VIEW.h };
         window.__dshPetDebug.lastDragRelease = { x: this.pos.x, y: this.pos.y };
         return;
       }
+      this.throwRef = requestAnimationFrame(step);
+    };
+    this.throwRef = requestAnimationFrame(step);
+  },
+
+  /** 普通甩飞沿主方向移动，贴墙、返回和缓降共用同一条轨迹。 */
+  startThrowGesture(x, y, vx, vy, lockScreen) {
+    const token = this.throwToken;
+    const gesture = S.createThrowGesture({ x, y, vx, vy }, lockScreen);
+    let last = performance.now();
+    this.throwPose.start(vx, vy, last);
+    const step = () => {
+      if (this.throwToken !== token) return;
+      const now = performance.now();
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      const { position, pose, done } = gesture.step(this.throwSpaceOf(), dt, now);
+      this.throwState = position;
+      this.sendBounds(position.x, position.y);
+      if (done) {
+        this.stopThrow();
+        this.customPos = { rx: (this.pos.x + this.halfW) / VIEW.w, ry: (this.pos.y + this.halfH) / VIEW.h };
+        window.__dshPetDebug.lastDragRelease = { x: this.pos.x, y: this.pos.y };
+        return;
+      }
+      this.throwPose.steer(pose, now);
       this.throwRef = requestAnimationFrame(step);
     };
     this.throwRef = requestAnimationFrame(step);

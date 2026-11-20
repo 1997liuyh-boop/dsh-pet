@@ -1,6 +1,5 @@
 /**
- * 桌面 Helper 自测用的 mock 宿主，只实现 /dsh-pet-7340 前缀下的四条只读端点：
- * 成品配置、按 petId 取动画、余额、余额触发计数。开发自测工具，不入 npm 包。
+ * 桌面 Helper 自测用的 mock 宿主，提供成品配置、动画素材与余额模拟。开发自测工具，不入 npm 包。
  * 不模拟用户层与文件宠物（配置只回内置默认一条），也不提供写操作、鉴权与系统通知
  * （系统通知是浏览器半侧的独立能力，走 DSH 网页自身事件流，与桌面模式无关）。
  * 素材一律从包内 assets/webm 读，petId 只作归属标识、不映射到独立素材目录。
@@ -39,6 +38,12 @@ const sendJson = (res, status, body) => {
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const pathname = decodeURIComponent(url.pathname);
+
+  if (pathname === '/dsh-pet-7340/pic/throw-actions.png') {
+    res.setHeader('content-type', 'image/png');
+    createReadStream(join(PACKAGE_ROOT, 'assets', 'pic', 'throw-actions.png')).pipe(res);
+    return;
+  }
 
   if (pathname === '/dsh-pet-7340/balance') {
     // 模拟 DeepSeek 余额：固定 11.06 元，按已用比例落在钱袋档位，便于对照余额动画。

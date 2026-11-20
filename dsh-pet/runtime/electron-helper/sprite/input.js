@@ -200,7 +200,7 @@ Object.assign(PetSprite.prototype, {
             ' vy=' +
             Math.round(v.vy),
         );
-        this.startThrow(px, py, v.vx, v.vy);
+        this.startThrow(px, py, v.vx, v.vy, true);
       } else {
         // 初速估算：够快就抛掷，否则原地放下
         const vel = S.estimateReleaseVelocity(this.dragTrail, performance.now(), this.physics);
@@ -218,7 +218,7 @@ Object.assign(PetSprite.prototype, {
               ' |v|=' +
               Math.round(Math.hypot(vel.vx, vel.vy)),
           );
-          this.startThrow(px, py, vel.vx, vel.vy);
+          this.startThrow(px, py, vel.vx, vel.vy, 'gesture');
         } else {
           // customPos 语义 = 宠物中心的比例（position() 用 rx*W - halfW 还原左上角），松手无边界夹取
           this.customPos = { rx: (px + this.halfW) / VIEW.w, ry: (py + this.halfH) / VIEW.h };

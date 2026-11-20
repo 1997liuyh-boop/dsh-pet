@@ -403,7 +403,7 @@ Object.assign(PetSprite.prototype, {
   // 漫游（rAF 驱动，动画首尾各 leadSec/tailSec 秒原地不动；几何在 shared/planMove）。
   // preferredName 传入时固定用该动画（菜单点播移动动画），否则与随机链一致随机选。
   tryMove(preferredName, playbackId) {
-    if (this.moveRef !== null || this.pendingMove || this.throwRef !== null) return true;
+    if (this.moveRef !== null || this.pendingMove || this.throwRef !== null || this.throwPose.isActive()) return true;
     const moves = this.animations.moves;
     const actions = moves.actions;
     if (!actions.length) return false;

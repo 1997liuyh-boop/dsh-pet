@@ -84,7 +84,7 @@ export interface DragCard {
   /** 停飞。 */
   stopFlight: () => void;
   /** 起飞。 */
-  startFlight: (px: number, py: number, vx: number, vy: number) => void;
+  startFlight: (px: number, py: number, vx: number, vy: number, gesture?: boolean) => void;
   /** 本卡是否被占用锁冻结。 */
   isFrozen: () => boolean;
   /** 本地解冻并释放宿主锁。 */
@@ -372,7 +372,7 @@ export function createDrag(card: () => DragCard): Drag {
       const { vx, vy } = decision.velocity;
       log(c.petId, 'release vx=' + Math.round(vx) + ' vy=' + Math.round(vy) + ' |v|=' + Math.round(Math.hypot(vx, vy)));
       // 飞行期间由 rAF 直接写 left/top，落定后才提交归一化中心。
-      c.startFlight(box.x, box.y, vx, vy);
+      c.startFlight(box.x, box.y, vx, vy, true);
       return;
     }
     // 原地放下：夹到可见下限后提交归一化中心；根节点位置由 commitPlace 直接写，不依赖重渲染。

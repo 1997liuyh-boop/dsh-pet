@@ -5,7 +5,15 @@
  * 不变量：每帧先积分、再结算互撞、最后写 DOM；互撞只写结算后的绝对速度，落定那一帧才调 commitFinal。
  * @module dsh-pet/src/client/pet/motion/flight
  */
-import { throwBounds, type GravityVector, type PetCollisionSlot, type ThrowState } from '../../../shared/physics.ts';
+import {
+  throwBounds,
+  throwSpace,
+  type GravityVector,
+  type PetCollisionSlot,
+  type ThrowState,
+} from '../../../shared/physics.ts';
+import { createThrowGesture, type GesturePose, type ThrowAnimation } from '../../../shared/throw-gesture.ts';
+import type { ThrowVisualFrame } from '../../../shared/throw-visual.ts';
 import { integrateFlight } from './flight-integrate.ts';
 import { createPetCollision, type PetCollisionResolver } from './pet-collision.ts';
 import type { BoxPoint, Center, Viewport } from './geometry.ts';
@@ -59,6 +67,12 @@ export interface FlightDeps {
   onLanding(impactVy: number): void;
   /** 本帧发生撞击（撞边或撞宠）：触觉反馈用；一帧最多回调一次，取本帧最重的那次。 */
   onImpact?(impact: FlightImpact): void;
+  /** 用户甩抛的视觉钩子，跟随物理帧。 */
+  onVisualStart?(vx: number, vy: number, now: number): void;
+  onVisualFrame?(frame: ThrowVisualFrame, now: number): void;
+  onGesturePose?(pose: GesturePose, now: number): void;
+  onVisualFinish?(now: number): void;
+  onVisualCancel?(): void;
   /** 体感模式下的重力向量；缺省用 physics.gravity 竖直向下。只在常驻模式里读。 */
   gravity?(): GravityVector;
 }
@@ -73,7 +87,7 @@ export interface Flight {
    * @param vx - 水平初速（px/s）。
    * @param vy - 竖直初速（px/s）。
    */
-  start(px: number, py: number, vx: number, vy: number): void;
+  start(px: number, py: number, vx: number, vy: number, animate?: ThrowAnimation): void;
   /** 体感常驻模式：从当前位置起步、初速为零，重力逐帧取 {@link FlightDeps.gravity}；已在常驻时无副作用。 */
   startHeld(): void;
   /**
@@ -129,7 +143,7 @@ export function createFlight(deps: FlightDeps): Flight {
     onPetImpact: (speed) => deps.onImpact?.({ kind: 'pet', speed }),
   });
 
-  const stop = (): void => {
+  const clearFlight = (): void => {
     token++;
     if (frame !== null) {
       cancelAnimationFrame(frame);
@@ -140,9 +154,15 @@ export function createFlight(deps: FlightDeps): Flight {
     quietMs = 0;
   };
 
-  const start = (px: number, py: number, vx: number, vy: number): void => {
-    held = false;
-    run(px, py, vx, vy);
+  const stop = (): void => {
+    clearFlight();
+    deps.onVisualCancel?.();
+  };
+
+  const start = (px: number, py: number, vx: number, vy: number, animate: ThrowAnimation = false): void => {
+    stop();
+    if (animate) deps.onVisualStart?.(vx, vy, performance.now());
+    run(px, py, vx, vy, animate);
   };
 
   /** 体感常驻模式：没有初速，重力逐帧由 {@link FlightDeps.gravity} 提供；已在常驻时无副作用。 */
@@ -151,6 +171,7 @@ export function createFlight(deps: FlightDeps): Flight {
     const el = deps.root();
     const box = deps.box() ?? (el ? { x: el.getBoundingClientRect().left, y: el.getBoundingClientRect().top } : null);
     if (box === null) return;
+    stop();
     held = true;
     run(box.x, box.y, 0, 0);
   };
@@ -179,7 +200,7 @@ export function createFlight(deps: FlightDeps): Flight {
     state.vy += dvy;
   };
 
-  const run = (px: number, py: number, vx: number, vy: number): void => {
+  const run = (px: number, py: number, vx: number, vy: number, animate: ThrowAnimation = false): void => {
     const metrics = deps.metrics();
     const viewport = deps.viewport();
     const physics = deps.physics();
@@ -195,9 +216,15 @@ export function createFlight(deps: FlightDeps): Flight {
     let last = performance.now();
     let prevGrounded = false; // 落地挤压只在空中到地面的转换帧触发一次。
     const rootEl = deps.root();
+    const gesture = animate === 'gesture' ? createThrowGesture(current) : null;
+    let gestureSpace = gesture ? spaceFor(viewport) : null;
+
+    function spaceFor(area: Viewport) {
+      return throwSpace({ areas: [{ x: 0, y: 0, ...area }], size: metrics.size, sideAllow: metrics.sideAllow });
+    }
 
     /** 写回本帧位置：DOM、包围盒与归一化中心（后者供重渲染时按它重排）。 */
-    const commitPose = (at: ThrowState): Center => {
+    const commitPose = (at: ThrowState, size = viewport): Center => {
       if (rootEl) {
         rootEl.style.left = at.x + 'px';
         rootEl.style.top = at.y + 'px';
@@ -205,7 +232,7 @@ export function createFlight(deps: FlightDeps): Flight {
         rootEl.style.bottom = 'auto';
       }
       deps.setBox({ x: at.x, y: at.y });
-      const center = { rx: (at.x + metrics.halfW) / viewport.width, ry: (at.y + metrics.halfH) / viewport.height };
+      const center = { rx: (at.x + metrics.halfW) / size.width, ry: (at.y + metrics.halfH) / size.height };
       deps.commitLive(center);
       return center;
     };
@@ -215,6 +242,24 @@ export function createFlight(deps: FlightDeps): Flight {
       const now = performance.now();
       const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
       last = now;
+      if (gesture && gestureSpace) {
+        const size = deps.viewport();
+        const area = gestureSpace.areas[0];
+        if (area.width !== size.width || area.height !== size.height) {
+          gestureSpace = spaceFor(size);
+        }
+        const { position, pose, done } = gesture.step(gestureSpace, dt, now);
+        state = position;
+        const center = commitPose(position, size);
+        if (done) {
+          deps.commitFinal(center);
+          stop();
+          return;
+        }
+        deps.onGesturePose?.(pose, now);
+        frame = requestAnimationFrame(step);
+        return;
+      }
       const fallingVy = current.vy; // 本帧积分前的竖直速度，即落地冲击速度。
       const gravity = held ? deps.gravity?.() : undefined;
       const res = integrateFlight(current, dt, bounds, physics, gravity);
@@ -235,6 +280,18 @@ export function createFlight(deps: FlightDeps): Flight {
       const center = commitPose(current);
       // 落地挤压：只在空中到地面的转换帧触发，力度随冲击速度。
       const grounded = current.y >= bounds.maxY - 1;
+      if (animate) {
+        deps.onVisualFrame?.(
+          {
+            vx: current.vx,
+            vy: current.vy,
+            hit: res.hit,
+            grounded,
+            floorGap: Math.max(0, bounds.maxY - current.y) / Math.max(1, metrics.halfH * 2),
+          },
+          now,
+        );
+      }
       if (res.bounced && grounded && !prevGrounded) deps.onLanding(fallingVy);
       prevGrounded = grounded;
       if (held) {
@@ -249,7 +306,8 @@ export function createFlight(deps: FlightDeps): Flight {
         }
       } else if (res.atRest && !disturbed) {
         deps.commitFinal(center);
-        stop();
+        clearFlight();
+        if (animate) deps.onVisualFinish?.(now);
         return;
       }
       frame = requestAnimationFrame(step);

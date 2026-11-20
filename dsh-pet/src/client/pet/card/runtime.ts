@@ -157,6 +157,7 @@ export function createCardRuntime(rt: PetRuntime) {
       cfgRef,
       live: liveRef,
       metrics: { bottomPad, halfH, halfW, sideAllow, size },
+      videos: () => [videoARef.current, videoBRef.current],
       moves: petAnims.moves,
       petId: cfg.id,
       root: () => rootRef.current,
