@@ -4,7 +4,9 @@
  * @module dsh-pet/src/host/index
  */
 import { createHostSetup } from './plugin/setup.ts';
-import { readAllConfig } from './config.ts';
+import { findPetInstance, readAllConfig } from './config.ts';
+import { GrowthStore } from './growth/store.ts';
+import { registerGrowth } from './plugin/growth.ts';
 import { currentEnvironment, setCityProvider } from './environment.ts';
 import { createHttpRoute, registerHttpRoute } from './plugin/http-route.ts';
 import { registerLifecycle } from './plugin/lifecycle.ts';
@@ -102,6 +104,7 @@ export function apply(ctx: any): void {
     balancePoll;
 
   // 待办清单：一份用户级数据（不分宠物），落盘在插件数据根；提醒循环与 /todos 路由共用同一个实例。
+  const growth = new GrowthStore(join(userRoot, 'growth.json'));
   const todos = new TodoStore({ file: join(userRoot, TODO_FILE_NAME), log });
 
   const desktopHelper = createDesktopHelper({
@@ -168,6 +171,7 @@ export function apply(ctx: any): void {
   });
 
   const deps: PetRouteDeps = {
+    growth,
     ...setup,
     ...petLookup,
     ...workStatusBridge,
@@ -222,6 +226,16 @@ export function apply(ctx: any): void {
     toolsInFlight,
     turnFlags,
     workStatus,
+  });
+
+  registerGrowth({
+    ctx,
+    growth,
+    state,
+    log,
+    resolveActivePetId,
+    canShow: (petId) => !sleep.sleeping(petId) && !petLookup.lockBlocked(petId, new URLSearchParams()),
+    petConfig: (petId) => findPetInstance(readAllConfig(configPaths), petId)?.conf,
   });
 
   registerBalanceCommand({ ctx, effectivePetList, refreshBalance, sleep, sleepRefusalText });

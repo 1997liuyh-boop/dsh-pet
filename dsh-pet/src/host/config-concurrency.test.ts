@@ -49,7 +49,7 @@ before(async () => {
     external: (id) =>
       id.startsWith('node:') ||
       (id.startsWith('@deepseek-ai/') && !(id in aliases)) ||
-      ['zod', '@electron/get', '@electron-internal/extract-zip', '@andresaya/edge-tts'].includes(id),
+      ['@electron/get', '@electron-internal/extract-zip', '@andresaya/edge-tts'].includes(id),
     plugins: [{ name: 'standalone-test-shims', resolveId: (id) => aliases[id] }],
   });
   const entry = join(pkg, 'lib/host.mjs');
@@ -203,4 +203,34 @@ test('a rejected config operation does not prevent later updates', async () => {
   const valid = await request('pet-display', 'POST', { id: 'alpha', display: 'none' });
   assert.equal(valid.status, 200);
   assert.equal(read().pets[0].display, 'none');
+});
+
+test('养成路由跨桌面与网页共享状态，学习和工作不能并行', async () => {
+  writeFileSync(file, JSON.stringify({ trayEnabled: false, pets: [{ ...pet('alpha'), display: 'both' }] }));
+  const web = 'growth?pet=alpha&surface=web';
+  const desktop = 'growth?pet=alpha&surface=desktop';
+  const status = await request(web, 'POST', { command: 'status' });
+  assert.equal(status.status, 200);
+  assert.deepEqual(status.body, {
+    message: 'Lv.0 · 经验 0/100 · 饱食度 100/100 · 心情 100/100 · 休息中',
+    ok: true,
+    growth: {
+      level: 0,
+      xp: 0,
+      xpToLevel: 100,
+      fullness: 100,
+      mood: 100,
+      hungry: false,
+      activity: null,
+      activitySeconds: 0,
+      playCooldownSeconds: 0,
+    },
+  });
+  const started = await request(desktop, 'POST', { command: 'study' });
+  const blocked = await request(web, 'POST', { command: 'work' });
+  for (const result of [started, blocked]) {
+    assert.equal((result.body as { growth?: { activity?: string } }).growth?.activity, 'study');
+  }
+  const stopped = await request(web, 'POST', { command: 'stop' });
+  assert.equal((stopped.body as { growth?: { activity?: string | null } }).growth?.activity, null);
 });

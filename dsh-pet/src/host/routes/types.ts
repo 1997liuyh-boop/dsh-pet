@@ -21,6 +21,7 @@ import type { SleepStore } from '../sleep.ts';
 import type { PollStateStore } from '../state.ts';
 import type { VoiceTarget } from '../surface.ts';
 import type { TodoStore } from '../todo/store.ts';
+import type { GrowthStore } from '../growth/store.ts';
 import type { HearService } from '../voice/hear.ts';
 import type { VoiceService } from '../voice/speak.ts';
 import type { WorkStatusStore } from '../work-status.ts';
@@ -77,6 +78,8 @@ export interface PetRouteDeps {
   readonly state: PollStateStore;
   /** 待办清单（单个 JSON 文件，读改写串行）。 */
   readonly todos: TodoStore;
+  /** 按宠物保存的养成进度。 */
+  readonly growth: GrowthStore;
   /** 工作状态联动快照。 */
   readonly workStatus: WorkStatusStore;
   /** 外部写入用的固定会话 id。 */

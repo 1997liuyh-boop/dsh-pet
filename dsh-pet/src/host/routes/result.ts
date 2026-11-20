@@ -13,6 +13,7 @@ import type { RouteResult } from '../http.ts';
  * 新增取值等同接口变更——消费方按 reason 分支，漏处理会拿到未命中的分支。
  */
 export type ResultReason =
+  | 'growth-unavailable'
   | 'bad-request'
   | 'generate-error'
   | 'internal-error'

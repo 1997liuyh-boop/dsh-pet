@@ -4,7 +4,7 @@
  * 依赖以取值函数注入，避免捕获渲染期的状态快照。
  * @module dsh-pet/src/client/pet/menu-actions
  */
-import { isNoMirrorAnimation, isSleepAllowedAction } from '../../shared/menu.ts';
+import { isNoMirrorAnimation, isSleepAllowedAction, requestGrowth } from '../../shared/menu.ts';
 import type { MenuLeaf } from '../../shared/menu.ts';
 import { ROUTE_PATH } from '../../shared/constants.ts';
 import type { Animations } from '../../shared/types.ts';
@@ -118,6 +118,11 @@ export function createMenuActions(deps: MenuActionDeps): MenuActions {
       const pool = deps.sleepRefuseTexts?.() ?? [];
       const text = pool[Math.floor(Math.random() * pool.length)];
       if (text !== undefined) deps.say?.(text);
+      return;
+    }
+    if (leaf.action === 'growth') {
+      const url = ROUTE_PATH + '/growth?pet=' + encodeURIComponent(petId) + '&surface=web';
+      void requestGrowth(url, leaf.growthCommand).then((message) => deps.say?.(message));
       return;
     }
     if (leaf.action === 'third-party') {

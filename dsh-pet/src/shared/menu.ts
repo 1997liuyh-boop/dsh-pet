@@ -12,10 +12,12 @@ export {
   buildMenuTree,
   buildMoreBranch,
   displayMenuBranch,
+  growthMenuBranch,
   isNoMirrorAnimation,
   isSleepAllowedAction,
   readMenuItems,
 } from './menu/tree.ts';
 export { buildMemeBranch, groupMemes, memeThumbUrl } from './menu/memes.ts';
+export { requestGrowth } from './menu/growth.ts';
 export { MENU_CSS } from './menu/css.ts';
 export { mountContextMenu } from './menu/mount.ts';

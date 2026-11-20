@@ -41,6 +41,19 @@ export const displayMenuBranch = (): MenuBranch => ({
 });
 
 /** 第三方菜单项统一收在这个一级菜单下（宿主自己的菜单项不进这里）。 */
+/** 网页和桌面共用的养成菜单。 */
+export const growthMenuBranch = (): MenuBranch => ({
+  label: '宠物养成',
+  children: [
+    { label: '查看状态', action: 'growth', growthCommand: 'status' },
+    { label: '开始学习', action: 'growth', growthCommand: 'study' },
+    { label: '开始工作', action: 'growth', growthCommand: 'work' },
+    { label: '一起玩耍', action: 'growth', growthCommand: 'play' },
+    { label: '喂食', action: 'growth', growthCommand: 'feed' },
+    { label: '结束活动', action: 'growth', growthCommand: 'stop' },
+  ],
+});
+
 export const MORE_MENU_LABEL = '更多';
 
 /** 从 /state 的 sections.menu.data 里读出本端要显示的第三方菜单项。

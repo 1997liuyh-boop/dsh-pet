@@ -3203,6 +3203,61 @@ paths:
         "405":
           description: 方法不允许（只接受 POST）
 
+  /dsh-pet-7340/growth:
+    post:
+      tags: [Action]
+      operationId: updatePetGrowth
+      summary: 查看或操作宠物养成状态
+      description: |
+        养成进度按宠物保存，桌面和网页共用。成功时返回状态与气泡文案供请求端展示。
+        学习与工作每 30 秒结算一段，单轮最多 5 分钟。饱食度在 0 到 100 之间，越低越饿。
+      parameters:
+        - $ref: "#/components/parameters/PetIdQuery"
+        - $ref: "#/components/parameters/SurfaceQuery"
+        - $ref: "#/components/parameters/LockQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [command]
+              properties:
+                command:
+                  type: string
+                  enum: [status, study, work, play, feed, stop]
+      responses:
+        "200":
+          description: 当前养成进度或业务失败
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/FailureResponse"
+                  - type: object
+                    required: [ok, growth, message]
+                    properties:
+                      ok:
+                        const: true
+                      message: { type: string }
+                      growth:
+                        type: object
+                        required: [level, xp, xpToLevel, fullness, mood, hungry, activity, activitySeconds, playCooldownSeconds]
+                        properties:
+                          level: { type: integer, minimum: 0 }
+                          xp: { type: integer, minimum: 0 }
+                          xpToLevel: { type: integer, minimum: 1 }
+                          fullness: { type: integer, minimum: 0, maximum: 100 }
+                          mood: { type: integer, minimum: 0, maximum: 100 }
+                          hungry: { type: boolean }
+                          activity: { enum: [study, work, null] }
+                          activitySeconds: { type: integer, minimum: 0 }
+                          playCooldownSeconds: { type: integer, minimum: 0 }
+        "400":
+          description: 请求体不是合法 JSON
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+
   /dsh-pet-7340/todos:
     get:
       tags: [Action]
@@ -3588,6 +3643,7 @@ components:
               lock-lost,
               pet-not-displayed,
               pose-unavailable,
+              growth-unavailable,
               unsupported,
               user-config-unparsable,
             ]

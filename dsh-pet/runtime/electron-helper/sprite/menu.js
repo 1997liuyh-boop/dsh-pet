@@ -37,6 +37,7 @@ Object.assign(PetSprite.prototype, {
       { label: '待办事项', action: 'todo', hint: S.TODO_HOTKEY_HINT },
       { label: '碎碎念', action: 'whisper' },
       { label: '对话', action: 'chat', hint: S.CHAT_HOTKEY_HINT },
+      S.growthMenuBranch(),
     ];
     // 「配图」：与浏览器端同一份分支（纳入对话的配图 / 其他），点一张就用它说一句；没有可用图时
     // 返回 null，整项不出现。数据来自拍平层吹入的条目级字段（this.pet.memes / chatImageEnabled /
@@ -99,6 +100,13 @@ Object.assign(PetSprite.prototype, {
       const pool = Array.isArray(this.pet.sleepRefuseTexts) ? this.pet.sleepRefuseTexts : [];
       const text = pool[Math.floor(Math.random() * pool.length)];
       if (text !== undefined) this.showWhisper(text, undefined, undefined, SLEEP_REFUSE_BUBBLE_MS, false);
+      return;
+    }
+    if (leaf.action === 'growth') {
+      const url = BASE + '/growth?pet=' + encodeURIComponent(this.pet.id) + '&surface=desktop';
+      void S.requestGrowth(url, leaf.growthCommand).then((message) => {
+        this.showWhisper(message, undefined, undefined, 6500, false);
+      });
       return;
     }
     if (leaf.action === 'third-party') {
