@@ -114,6 +114,7 @@ const EVENT_LABELS: Record<string, string> = {
   balance: '余额档位',
   whisper: '碎碎念',
   workStatus: '工作状态',
+  levelUp: '养成',
 };
 
 /** 把动画名包成叶子。 */
