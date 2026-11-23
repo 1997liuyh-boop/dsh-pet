@@ -1,9 +1,17 @@
+import { growthFeedActions, growthPlayActions, growthProject } from '../../shared/growth-projects.ts';
+import type { Animations } from '../../shared/types.ts';
 import { readAllConfig } from '../config.ts';
 import type { RouteResult } from '../http.ts';
-import { growthFeedbackText, publishGrowthAnimation } from '../growth/feedback.ts';
+import { growthFeedbackText, publishGrowthAnimation, publishGrowthState } from '../growth/feedback.ts';
 import { growthCommand, growthView } from '../growth/rules.ts';
 import { failResult, invalidJson, methodNotAllowed, okResult } from './result.ts';
 import type { RouteHandler } from './types.ts';
+
+function activityProjectAllowed(command: string, project: string, animations?: Animations): boolean {
+  if (command === 'feed') return growthFeedActions(animations).includes(project);
+  if (command === 'play') return growthPlayActions(animations).includes(project);
+  return growthProject(command, project) !== undefined;
+}
 
 export const handleGrowthRoutes: RouteHandler = async (
   deps,
@@ -18,8 +26,11 @@ export const handleGrowthRoutes: RouteHandler = async (
   } catch {
     return invalidJson();
   }
-  const command = growthCommand.safeParse((parsed as { command?: unknown } | null)?.command);
+  const input = parsed as { command?: unknown; project?: unknown } | null;
+  const command = growthCommand.safeParse(input?.command);
+  const project = input?.project;
   if (!command.success) return failResult('bad-request', '养成指令无效');
+  if (project !== undefined && typeof project !== 'string') return failResult('bad-request', '养成项目无效');
 
   let refused: RouteResult | null = null;
   try {
@@ -28,11 +39,22 @@ export const handleGrowthRoutes: RouteHandler = async (
     const gate = () => deps.lockBlocked(who.petId, url.searchParams) ?? deps.sleepBlocked(who.petId, url.searchParams);
     const blocked = gate();
     if (blocked) return blocked;
-    const result = await deps.growth.command(who.petId, command.data, () => {
-      refused = gate();
-      if (refused) throw new Error('养成操作已被拦截');
-    });
-    if (!gate()) publishGrowthAnimation(deps.state, who.conf, result, result.animation);
+    if (project !== undefined) {
+      const animations = who.conf.animations as Animations | undefined;
+      const allowed = activityProjectAllowed(command.data, project, animations);
+      if (!allowed) return failResult('bad-request', '该宠物没有这个养成项目');
+    }
+    const result = await deps.growth.command(
+      who.petId,
+      command.data,
+      () => {
+        refused = gate();
+        if (refused) throw new Error('养成操作已被拦截');
+      },
+      project,
+    );
+    publishGrowthState(deps.state, who.conf, result);
+    if (!gate()) publishGrowthAnimation(deps.state, who.conf, result, result.animation, project);
     return okResult({
       ok: true,
       growth: growthView(result.next, result.now),

@@ -13,6 +13,7 @@ Object.assign(PetSprite.prototype, {
     // 「当前在播哪一段」只在这里写：ended 分流、回空闲补丁、随机链避重都读它。
     // 交给调用方维护时 switchTo(x, false) 会留下过期值，events.js 判「是不是工作动画」就永远不成立。
     this.anim = next;
+    this.el.toggleAttribute('data-level-up', S.isLevelUpAnimation(next));
     this.once = !nextOnce;
     const pending = this.pending;
     if (pending && pending.anim === next && pending.once === nextOnce) {
@@ -30,13 +31,13 @@ Object.assign(PetSprite.prototype, {
       return;
     }
     const gen = ++this.gen;
-    this.pending = { anim: next, once: nextOnce, gen };
+    this.pending = { anim: next, once: nextOnce, gen, playbackId };
     const target = this.front === 0 ? this.videoB : this.videoA;
     const el = target;
     if (!el) return;
     // 素材地址两条路：url 形态直接用第三方给的完整地址（宿主已把 scheme 卡在 http/https，
     // 不经 bridge、也不拼 BASE）；name 形态按「素材根 + 名字」拼。
-    el.src = url || this.assetBase + encodeURIComponent(next) + (S.ANIMATION_EXT || '.webm');
+    el.src = url || this.assetBase + encodeURIComponent(S.growthAnimationAsset(next)) + (S.ANIMATION_EXT || '.webm');
     el.loop = !nextOnce;
     el.muted = true;
     el.autoplay = true;
@@ -53,6 +54,7 @@ Object.assign(PetSprite.prototype, {
         if (this.playback === playbackId) this.playback = null;
         this.reportPlayback(playbackId, 'failed', why === 'video error' ? 'decode-error' : 'asset-load');
       }
+      if (S.isLevelUpAnimation(next)) this.playIdle();
     };
     const loadTimer = window.setTimeout(() => loadGuard('10s 超时'), 10000);
     el.onerror = () => {
@@ -88,6 +90,7 @@ Object.assign(PetSprite.prototype, {
         })
         .catch(() => {
           // 自动播放被拒 / 元素不可播：如实回 failed，不改播放控制
+          if (S.isLevelUpAnimation(next) && this.gen === gen) this.playIdle();
           if (!playbackId) return;
           if (this.playback === playbackId) this.playback = null;
           this.reportPlayback(playbackId, 'failed', 'play-rejected');
@@ -248,7 +251,59 @@ Object.assign(PetSprite.prototype, {
   },
 
   // 动画链（纯逻辑在 shared）
+  setGrowth(growth) {
+    const previous = this.growth;
+    this.growth = growth;
+    this.growthLabel.textContent = 'Lv.' + growth.level;
+    this.growthTrack.setAttribute('aria-valuenow', String(growth.xp));
+    this.growthTrack.setAttribute('aria-valuemax', String(growth.xpToLevel));
+    this.growthFill.style.width = S.growthPercent(growth) + '%';
+    if (previous?.animation === growth.animation && previous.until === growth.until) return;
+    clearTimeout(this.growthTimer);
+    clearTimeout(this.growthRetry);
+    const name = S.growthLoop(growth);
+    if (name) {
+      const start = () => {
+        if (!S.growthLoop(this.growth)) return;
+        if (S.isLevelUpAnimation(this.anim) || !this.resumeGrowthAnim()) {
+          this.growthRetry = setTimeout(start, 250);
+        }
+      };
+      // 同一轮的显式点播先接管前台，养成循环稍后恢复。
+      this.growthRetry = setTimeout(start, 0);
+      this.growthTimer = setTimeout(() => this.finishGrowthAnim(name), growth.until - Date.now());
+    } else if (previous?.animation) {
+      this.finishGrowthAnim(previous.animation);
+    }
+  },
+
+  finishGrowthAnim(name) {
+    if (this.anim !== name || !this.once || this.sleeping || this.frozen || this.dragState.active) return;
+    if (!this.resumeWorkStatusAnim()) this.playIdle();
+  },
+
+  resumeGrowthAnim() {
+    const name = S.growthLoop(this.growth);
+    if (
+      !name ||
+      this.frozen ||
+      this.sleeping ||
+      this.playback ||
+      this.pending?.playbackId ||
+      this.dragState.active ||
+      this.throwRef !== null ||
+      this.throwPose.isActive()
+    )
+      return false;
+    if (this.anim !== name || !this.once) {
+      this.stopMove();
+      this.switchTo(name, false);
+    }
+    return true;
+  },
+
   playIdle() {
+    if (this.resumeGrowthAnim()) return;
     // 占用锁：锁生效时不掷骰。这里是随机链的唯一入口（动画播完才会走到），一句判断就把随机动画、
     // 随机转向与自主走位一起停住——宠物停在最后一帧，等持锁者的下一条指令（走 /anim，不经这里）。
     if (this.frozen) return;
@@ -327,6 +382,11 @@ Object.assign(PetSprite.prototype, {
     const { animations } = { animations: this.animations };
     // 事件动画播完：回 idle（与 drag/clicks 同分支，不进随机链）；气泡由定时器自动消失，与动画解耦
     const isEvent = S.isEventAnim(animations.events, this.anim);
+    if (!animations.turn.includes(this.anim) && this.resumeGrowthAnim()) return;
+    if (S.isLevelUpAnimation(this.anim)) {
+      if (!this.resumeWorkStatusAnim() && animations.idle.length) this.playOnce(S.pick(animations.idle, this.anim));
+      return;
+    }
     if (isEvent) {
       // 工作状态多候选档位：播完一段自动轮换到下一候选，长时间状态不单段重复；仅非终态档位轮换，
       // 终态播完即止；单候选档位由 loop 无限循环（正常不触发 ended，走不到这里）。
@@ -368,6 +428,7 @@ Object.assign(PetSprite.prototype, {
   // 互动/事件动画播完后恢复工作状态档位循环：非终态 → 按当前档位重选动画（避开当前段）；
   // 终态/空闲 → false 不接管，调用方走原逻辑。
   resumeWorkStatusAnim() {
+    if (this.resumeGrowthAnim()) return true;
     // 占用锁：冻结期间不许由这条路把工作状态动画点回来——它读的是实时 workState，与 workTick 无关，
     // 持锁者每投一次带 anim 的气泡，说话动画播完就会走到这里。解冻路径是先置 frozen=false 再调它。
     if (this.frozen) return false;

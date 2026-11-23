@@ -195,6 +195,19 @@ Object.assign(PetSprite.prototype, {
     stage.appendChild(this.videoA);
     stage.appendChild(this.videoB);
     stage.appendChild(this.hit);
+    const growthHud = document.createElement('div');
+    growthHud.className = S.GROWTH_HUD;
+    this.growthLabel = document.createElement('span');
+    this.growthTrack = document.createElement('span');
+    this.growthTrack.className = S.GROWTH_TRACK;
+    this.growthTrack.setAttribute('role', 'progressbar');
+    this.growthTrack.setAttribute('aria-label', '升级经验');
+    this.growthFill = document.createElement('span');
+    this.growthFill.className = S.GROWTH_FILL;
+    this.growthTrack.append(this.growthFill);
+    growthHud.append(this.growthLabel, this.growthTrack);
+    stage.append(growthHud);
+    this.setGrowth(S.EMPTY_GROWTH);
     this.throwPose = S.createThrowPose({
       videos: () => [this.videoA, this.videoB],
       atlasUrl: () => (this.assetRoot === 'main' ? BASE + '/pic/throw-actions.png' : null),

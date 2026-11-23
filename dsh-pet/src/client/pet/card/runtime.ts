@@ -6,6 +6,7 @@
  * @module dsh-pet/src/client/pet/card/runtime
  */
 import { pick } from '../../../shared/pickers.ts';
+import { EMPTY_GROWTH, growthLoop, isLevelUpAnimation } from '../../../shared/growth.ts';
 import { postAction } from '../../../shared/state.ts';
 import { ROUTE_PATH } from '../../../shared/constants.ts';
 import { resolveFontPx } from '../../../shared/fonts.ts';
@@ -259,6 +260,7 @@ export function createCardRuntime(rt: PetRuntime) {
       card,
       cfg: () => cfgRef.current,
       isDragging: () => drag.isActive(),
+      isFlying: () => motion.flight.isFlying(),
       ownAnim,
       // 第四个参数 = 宿主指令：来自 pets.<id>.anim 的点播，不按「用户点击」判睡觉
       playByName: (anim, playbackId, keepFacing) =>
@@ -272,10 +274,7 @@ export function createCardRuntime(rt: PetRuntime) {
       stopMotion: motion.stopMove,
       tryWalk: motion.walk.tryMove,
     };
-    // 七条指令的分派在 cue-effects：这里只把当拍 props 交过去。
-    useCueEffects(hub, props);
-    // 动画流比指令处理晚一步创建：它要读工作状态，也要经 hub 说话与恢复档位。
-    const flow = useAnimationFlow(hub, workStatus);
+    const flow = useAnimationFlow(hub, workStatus, props.growth);
     liveRef.current.flow = flow;
 
     // 睡觉：宿主写叶子、渲染端执行；只在叶子变化时推一次（未变化的重渲染不重播动画）。
@@ -283,6 +282,36 @@ export function createCardRuntime(rt: PetRuntime) {
       if (sleep) flow.applySleep(sleep);
       // eslint-disable-next-line react-hooks/exhaustive-deps -- 只按叶子变化次数触发，sleep 是当拍快照
     }, [sleepTick]);
+
+    const growth = props.growth ?? EMPTY_GROWTH;
+    const prevGrowthAnim = useRef<string | null>(null);
+    useEffect(() => {
+      const previous = prevGrowthAnim.current;
+      const name = growthLoop(growth);
+      prevGrowthAnim.current = name;
+      const finish = (loop: string) => liveRef.current.flow?.finishGrowthAnim(loop);
+      if (!name) {
+        if (previous) finish(previous);
+        return;
+      }
+      let retry = 0;
+      const start = () => {
+        if (!growthLoop(growth)) return;
+        if (isLevelUpAnimation(card.animRef.current) || !liveRef.current.flow?.resumeGrowthAnim()) {
+          retry = window.setTimeout(start, 250);
+        }
+      };
+      start();
+      const timer = window.setTimeout(() => finish(name), growth.until - Date.now());
+      return () => {
+        window.clearTimeout(timer);
+        window.clearTimeout(retry);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- 经验变化不重播，循环只跟活动及截止时间走
+    }, [growth.animation, growth.until]);
+
+    // 同拍的显式点播、抛掷等指令最后执行，可抢占活动循环。
+    useCueEffects(hub, props);
 
     const stageStyle = petStageStyle(bottomPad);
     const rootStyle = petRootStyle(
@@ -294,6 +323,8 @@ export function createCardRuntime(rt: PetRuntime) {
     return {
       // 气泡单槽：四种气泡共用同一套定位，按优先级只挂一个。
       bubble: bubbles.node(),
+      growth,
+      animation: card.state.anim,
       corner,
       facing,
       fontBubblePx: fontPx.bubble,

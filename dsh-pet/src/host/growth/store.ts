@@ -24,7 +24,7 @@ export interface GrowthChange {
   petId: string;
   next: PetGrowth;
   leveledUp: boolean;
-  ended: boolean;
+  ended: NonNullable<PetGrowth['activity']>['kind'] | null;
 }
 
 function changeOf(petId: string, prev: PetGrowth, next: PetGrowth): GrowthChange {
@@ -32,7 +32,7 @@ function changeOf(petId: string, prev: PetGrowth, next: PetGrowth): GrowthChange
     petId,
     next,
     leveledUp: growthLevel(next) > growthLevel(prev),
-    ended: prev.activity !== null && next.activity === null,
+    ended: next.activity === null ? (prev.activity?.kind ?? null) : null,
   };
 }
 
@@ -76,17 +76,25 @@ export class GrowthStore {
     this.cached = data;
   }
 
-  command(petId: string, command: GrowthCommand, validate?: () => void) {
+  command(petId: string, command: GrowthCommand, validate?: () => void, project?: string) {
     return this.run(async (data, now) => {
       validate?.();
       const pets = new Map(data.pets);
       const prev = pets.get(petId) ?? initialGrowth();
-      const { next, text, animation } = applyGrowthCommand(advanceGrowth(prev, now), command, now);
+      const { next, text, animation } = applyGrowthCommand(advanceGrowth(prev, now), command, now, project);
       if (next !== prev) {
         pets.set(petId, next);
         await this.save({ ...data, pets: [...pets] });
       }
       return { ...changeOf(petId, prev, next), text, animation, now };
+    });
+  }
+
+  snapshot(): Promise<GrowthChange[]> {
+    return this.run(async (data, now) => {
+      const pets = data.pets.map(([id, pet]) => [id, advanceGrowth(pet, now)] as [string, PetGrowth]);
+      if (pets.some(([, pet], index) => pet !== data.pets[index]?.[1])) await this.save({ ...data, pets });
+      return pets.map(([id, pet]) => changeOf(id, pet, pet));
     });
   }
 

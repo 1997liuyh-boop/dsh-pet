@@ -117,7 +117,7 @@ export function takeChanged(s: PollState, baseline: Record<string, number>): Sta
 export type SectionLeafName = 'config' | 'balance' | 'workStatus' | 'notify' | 'menu' | 'focusSession' | 'env';
 
 /** `pets.<id>.<名>` 里会被消费端分发的那几个叶子。 */
-export type PetLeafName = 'say' | 'anim' | 'position' | 'throw' | 'lock' | 'sleep';
+export type PetLeafName = 'say' | 'anim' | 'position' | 'throw' | 'lock' | 'sleep' | 'growth';
 
 /** 一次叶子分发的落点：分段叶子，或某只宠物的叶子。 */
 export type LeafTarget =
@@ -127,7 +127,7 @@ export type LeafTarget =
 const SECTION_LEAF_NAMES = ['config', 'balance', 'workStatus', 'notify', 'menu', 'focusSession', 'env'] as const;
 
 /** 宠物叶子名的全集；新增宠物叶子时与 {@link PetLeafName} 一起改。 */
-const PET_LEAF_NAMES = ['say', 'anim', 'position', 'throw', 'lock', 'sleep'] as const;
+const PET_LEAF_NAMES = ['say', 'anim', 'position', 'throw', 'lock', 'sleep', 'growth'] as const;
 
 /** 把字符串收窄成分段叶子名。 */
 function isSectionLeafName(name: string): name is SectionLeafName {

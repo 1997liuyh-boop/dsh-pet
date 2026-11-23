@@ -1,7 +1,7 @@
 import type { LoggerLike } from '../log-file.ts';
 import type { PollStateStore } from '../state.ts';
 import { sessionIdOf } from '../notify-events.ts';
-import { growthFeedbackText, publishGrowthAnimation } from '../growth/feedback.ts';
+import { growthFeedbackText, publishGrowthAnimation, publishGrowthState } from '../growth/feedback.ts';
 import type { GrowthChange, GrowthStore } from '../growth/store.ts';
 import { readGrowthUsage } from '../growth/usage.ts';
 
@@ -23,8 +23,10 @@ export function registerGrowth(deps: {
   ctx.effect(() => {
     let disposed = false;
     const publish = (change: GrowthChange): void => {
-      if (disposed || (!change.leveledUp && !change.ended) || !canShow(change.petId)) return;
+      if (disposed) return;
       const conf = petConfig(change.petId);
+      publishGrowthState(state, conf, change);
+      if ((!change.leveledUp && !change.ended) || !canShow(change.petId)) return;
       if (!conf) return;
       publishGrowthAnimation(state, conf, change);
       state.writePet(change.petId, 'say', { text: growthFeedbackText(change), duration: 6500, anim: false });
@@ -43,6 +45,10 @@ export function registerGrowth(deps: {
         })
         .catch(report);
     });
+    void growth
+      .snapshot()
+      .then((changes) => changes.forEach(publish))
+      .catch(report);
     const timer = setInterval(() => {
       void growth
         .tick()

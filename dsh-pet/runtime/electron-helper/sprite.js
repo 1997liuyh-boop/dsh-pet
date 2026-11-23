@@ -101,6 +101,8 @@ class PetSprite {
   }
 
   dispose() {
+    clearTimeout(this.growthTimer);
+    clearTimeout(this.growthRetry);
     this.ac.abort();
     this.inputRegionMutation.disconnect();
     this.inputRegionResize.disconnect();

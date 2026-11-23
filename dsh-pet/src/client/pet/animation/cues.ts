@@ -5,6 +5,7 @@
  * 回执与停顿门禁由动画链处理，React 状态由组件按结果改。
  * @module dsh-pet/src/client/pet/animation/cues
  */
+import { isLevelUpAnimation } from '../../../shared/growth.ts';
 import { isEventAnim, nextWorkStatusAnim, poolIncludes } from '../../../shared/pickers.ts';
 import type { Animations } from '../../../shared/types.ts';
 
@@ -43,6 +44,7 @@ const isWorkActive = (state: string | null | undefined): boolean =>
  */
 export function decideEndedCue(input: EndedInput): EndedCue {
   const { animations, current, workState } = input;
+  if (isLevelUpAnimation(current)) return { kind: 'event-done' };
   const isEvent = isEventAnim(animations.events, current);
   if (isEvent && isWorkActive(workState)) {
     // 多候选档位播完轮换到下一候选，长时间状态不单段重复。

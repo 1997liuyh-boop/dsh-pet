@@ -48,6 +48,8 @@ import type { PetCardProps } from './card/props.ts';
 import type { PetRuntime, RuntimePet } from './types.ts';
 import { setClickSoundEnabled } from './click-sound.ts';
 import { setSurface, setVoiceConfig, setVoiceNotifyEnabled } from '../../shared/voice.ts';
+import { readGrowth } from '../../shared/growth.ts';
+import type { GrowthSnapshot } from '../../shared/growth.ts';
 import { runStatePoll } from './state-poll.ts';
 import { setMenuItems } from '../menu-service.ts';
 import { setStateSnapshot } from '../state-service.ts';
@@ -198,6 +200,7 @@ export function createPetMulti(
     const [lockTick, setLockTick] = useState(0);
     const lockRef = useRef<Record<string, LockState>>({});
     // 睡觉同样是状态：三段名字由宿主挑定，卡片据此播开始→循环→起来。
+    const [growthByPet, setGrowthByPet] = useState<Record<string, GrowthSnapshot>>({});
     const [sleepTick, setSleepTick] = useState(0);
     const sleepRef = useRef<Record<string, SleepState>>({});
     // 第三方菜单项只在打开右键菜单时读一次，不参与渲染。
@@ -310,6 +313,9 @@ export function createPetMulti(
             setLockTick((t) => t + 1);
             return;
           }
+          case 'growth':
+            setGrowthByPet((prev) => ({ ...prev, [petId]: readGrowth(leaf) }));
+            return;
           case 'sleep': {
             // 睡觉也是状态：卡片按三段名字播「开始→循环→起来」，醒来后回随机链。
             const hit = readSleep(leaf);
@@ -339,6 +345,11 @@ export function createPetMulti(
             if (hit) sleepRef.current[petId] = hit;
           }
           setSleepTick((t) => t + 1);
+          setGrowthByPet(
+            Object.fromEntries(
+              Object.entries(s.pets).flatMap(([id, entry]) => (entry.growth ? [[id, readGrowth(entry.growth)]] : [])),
+            ),
+          );
           return;
         }
         for (const { path, leaf } of takeChanged(s, baseline)) {
@@ -395,6 +406,7 @@ export function createPetMulti(
             throwCueTick,
             lock: lockRef.current[p.id],
             lockTick,
+            growth: growthByPet[p.id],
             sleep: sleepRef.current[p.id],
             sleepTick,
             menuItemsRef,

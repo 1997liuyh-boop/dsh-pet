@@ -60,6 +60,7 @@ const required = [
   'lib/types/index.d.ts', // 宿主类型声明
   'lib/types/client/index.d.ts', // 客户端类型声明
   'cordis.patch.yml', // bundle patch（挂载声明）
+  'assets/pic/throw-actions.png', // 甩飞、蹬墙、回滑和撑伞共用的动作图集
   'runtime/electron-helper/main.js', // 桌面模式 Electron 主进程
   'runtime/electron-helper/main/smoke.js', // 桌面模式冒烟自检（main.js require，缺了启动即崩）
   'runtime/electron-helper/main/dpi.js', // 桌面模式 DPI 与指针（main.js require，缺了启动即崩）
@@ -118,6 +119,8 @@ exportsPlugin ? ok('client exports apply/inject/name') : fail('client.js missing
 
 // 两项声明缺任一个都装不进宿主：bundle 声明决定挂载声明，client 声明决定浏览器半侧注入。
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+if (pkg.files?.includes('assets/pic')) ok('files includes assets/pic');
+else fail('package.json files must include assets/pic (throw animations would not ship)');
 if (pkg.dsh?.bundle?.patch) ok('dsh.bundle.patch declared');
 else fail('package.json missing dsh.bundle.patch');
 if (pkg.dsh?.client?.platform === 'web') ok('dsh.client.web declared');

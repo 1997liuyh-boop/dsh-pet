@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -10,6 +10,7 @@ import {
   GROWTH_TICK_MS,
   growthView,
   initialGrowth,
+  PLAY_DURATION_MS,
 } from './rules.ts';
 import { GrowthStore } from './store.ts';
 import { readGrowthUsage } from './usage.ts';
@@ -30,16 +31,38 @@ test('学习与工作每段累计经验和饱食消耗，连续进行额外降�
   assert.equal(worked.activity, 'work');
 });
 
-test('多次升级、饥饿、喂食和玩耍遵守状态边界', () => {
+test('工作中可以连续切换项目，计时与结算不中断', () => {
+  const started = applyGrowthCommand(initialGrowth(), 'work', now, 'copywriting').next;
+  const tickAt = now + GROWTH_TICK_MS;
+  const switched = applyGrowthCommand(started, 'work', tickAt - 1, 'video-editing');
+  assert.equal(switched.text, '已切换到剪视频。');
+  assert.deepEqual(switched.next.activity, { ...started.activity, project: 'video-editing' });
+  const settled = advanceGrowth(switched.next, tickAt);
+  const another = applyGrowthCommand(settled, 'work', tickAt + 1, 'carry-token').next;
+  assert.deepEqual(another.activity, { ...settled.activity, project: 'carry-token' });
+  assert.equal(growthView(another, tickAt + 1).xp, 4);
+  assert.equal(growthView(another, tickAt + 1).fullness, 97);
+  assert.equal(applyGrowthCommand(another, 'work', tickAt + 1, 'carry-token').next, another);
+  assert.equal(applyGrowthCommand(another, 'study', tickAt + 1, 'drawing').next, another);
+});
+
+test('降低 Token 经验时仍正常结算饥饿、喂食和玩耍', () => {
   const hungry = applyTokenUsage(initialGrowth(), 2_125_000);
   const hungryView = growthView(hungry, now);
-  assert.deepEqual([hungryView.level, hungryView.xp, hungryView.fullness, hungryView.mood], [2, 12, 0, 50]);
+  assert.deepEqual([hungryView.level, hungryView.xp, hungryView.fullness, hungryView.mood], [0, 21, 0, 50]);
   assert.equal(applyGrowthCommand(hungry, 'study', now).next, hungry);
   const fed = applyGrowthCommand(hungry, 'feed', now).next;
   const played = applyGrowthCommand(fed, 'play', now).next;
   assert.deepEqual([growthView(played, now).fullness, growthView(played, now).mood], [30, 68]);
   assert.equal(applyGrowthCommand(played, 'play', now + 1).next, played);
-  assert.ok(applyGrowthCommand(played, 'study', now).next.activity);
+  assert.equal(growthView(played, now).activity, 'play');
+  assert.equal(applyGrowthCommand(played, 'study', now).next, played);
+  assert.equal(advanceGrowth(played, now + PLAY_DURATION_MS - 1), played);
+  const rested = advanceGrowth(played, now + PLAY_DURATION_MS);
+  assert.equal(rested.activity, null);
+  assert.equal(rested.mood, played.mood);
+  assert.equal(rested.xp, played.xp);
+  assert.equal(applyGrowthCommand(rested, 'study', now + PLAY_DURATION_MS).next.activity?.kind, 'study');
 });
 
 test('只读取已结算的用量，流式事件取最后一份样本且不重复加推理量', () => {
@@ -93,11 +116,49 @@ test('桌面和网页共享一轮活动，重启后补算并保留每个会话�
   assert.equal(await reopened.recordUsage('session', sample, 'other'), undefined);
   const [completed] = await reopened.tick();
   assert.ok(completed?.ended);
-  assert.equal(growthView(completed.next, clock).xp, 32);
+  assert.equal(growthView(completed.next, clock).xp, 30);
   assert.equal((await reopened.tick()).length, 0);
   assert.equal(growthView((await reopened.command('other', 'status')).next, clock).xp, 0);
 
   await reopened.recordUsage('session', { ...sample, seq: 4, tokens: null }, 'pet');
   await reopened.recordUsage('session', { ...sample, seq: 5 }, 'pet');
-  assert.equal(growthView((await reopened.command('pet', 'status')).next, clock).xp, 33);
+  assert.equal(growthView((await reopened.command('pet', 'status')).next, clock).xp, 30);
+});
+
+test('Token 按十万比一累计，升级后逐级提高经验门槛', () => {
+  const first = applyTokenUsage(initialGrowth(), 99_999);
+  assert.equal(growthView(first, now).xp, 0);
+  assert.equal(growthView(applyTokenUsage(first, 1), now).xp, 1);
+  const before = applyTokenUsage(initialGrowth(), 9_999_999);
+  assert.equal(growthView(before, now).level, 0);
+  const firstLevel = applyTokenUsage(before, 1);
+  assert.deepEqual([firstLevel.level, firstLevel.xp, growthView(firstLevel, now).xpToLevel], [1, 0, 150]);
+  const further = applyTokenUsage(firstLevel, 35_500_000);
+  assert.deepEqual([further.level, growthView(further, now).xp, growthView(further, now).xpToLevel], [3, 5, 250]);
+});
+
+test('旧存档保留等级和进度比例，Token 零头重启后继续累计', async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'dsh-pet-growth-legacy-'));
+  t.after(() => rm(folder, { recursive: true, force: true }));
+  const file = join(folder, 'growth.json');
+  const oldPet = {
+    xp: 2_250_000,
+    fullness: 900_000,
+    mood: 880_000,
+    effortTicks: 0,
+    lastEffortAt: 0,
+    playReadyAt: 0,
+    activity: null,
+  };
+  await writeFile(file, JSON.stringify({ pets: [['pet', oldPet]], sessions: [] }));
+  const store = new GrowthStore(file, () => now);
+  const [migrated] = await store.snapshot();
+  assert.equal(migrated?.leveledUp, false);
+  assert.deepEqual([migrated?.next.level, migrated?.next.xp], [2, 500_000]);
+  await store.recordUsage('session', { seq: 1, slot: '[1,0]', tokens: 99_999 }, 'pet');
+  const reopened = new GrowthStore(file, () => now);
+  const change = await reopened.recordUsage('session', { seq: 2, slot: '[1,0]', tokens: 100_000 }, 'pet');
+  assert.ok(change);
+  assert.equal(change.leveledUp, false);
+  assert.deepEqual([change.next.level, growthView(change.next, now).xp, change.next.tokenRemainder], [2, 51, 0]);
 });

@@ -34,6 +34,7 @@ export interface CardHub {
   posFollow: PositionFollow;
   /** 指针是否按着（抛掷指令要避让）。 */
   isDragging(): boolean;
+  isFlying?(): boolean;
   /** 停走位与位置跟随。 */
   stopMotion(): void;
   /** 抛掷指令：角度（度，0 为正右、逆时针为正）与力度倍率。 */

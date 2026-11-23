@@ -32,6 +32,7 @@ export interface MenuLeaf {
     | 'growth';
   /** 养成菜单提交给宿主的指令。 */
   growthCommand?: 'status' | 'study' | 'work' | 'play' | 'feed' | 'stop';
+  growthProject?: string;
   /** set-display 的目标显示位置（与设置页的下拉框同一套取值） */
   display?: PetDisplay;
   /** third-party：注册它的 owner（身份键，只用于回传，不显示）；同一个 owner 的项收在同一分组下，

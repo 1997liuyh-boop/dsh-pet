@@ -212,7 +212,7 @@ test('养成路由跨桌面与网页共享状态，学习和工作不能并行',
   const status = await request(web, 'POST', { command: 'status' });
   assert.equal(status.status, 200);
   assert.deepEqual(status.body, {
-    message: 'Lv.0 · 经验 0/100 · 饱食度 100/100 · 心情 100/100 · 休息中',
+    message: 'Lv.0 · 经验 0/100\n饱食度 100/100\n心情 100/100\n休息中',
     ok: true,
     growth: {
       level: 0,
@@ -226,10 +226,14 @@ test('养成路由跨桌面与网页共享状态，学习和工作不能并行',
       playCooldownSeconds: 0,
     },
   });
-  const started = await request(desktop, 'POST', { command: 'study' });
+  const invalid = await request(web, 'POST', { command: 'play', project: '写代码' });
+  assert.equal((invalid.body as { ok: boolean }).ok, false);
+  const started = await request(desktop, 'POST', { command: 'study', project: 'calligraphy' });
   const blocked = await request(web, 'POST', { command: 'work' });
   for (const result of [started, blocked]) {
-    assert.equal((result.body as { growth?: { activity?: string } }).growth?.activity, 'study');
+    const growth = (result.body as { growth?: { activity?: string; project?: string } }).growth;
+    assert.equal(growth?.activity, 'study');
+    assert.equal(growth?.project, 'calligraphy');
   }
   const stopped = await request(web, 'POST', { command: 'stop' });
   assert.equal((stopped.body as { growth?: { activity?: string | null } }).growth?.activity, null);

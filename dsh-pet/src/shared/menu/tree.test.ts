@@ -8,7 +8,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildMoreBranch, isSleepAllowedAction, readMenuItems } from './tree.ts';
+import { buildMenuTree, buildMoreBranch, growthMenuBranch, isSleepAllowedAction, readMenuItems } from './tree.ts';
 
 describe('isSleepAllowedAction —— 睡着时仍然放行的动作', () => {
   test('睡觉 / 起来 / 维护类 / 第三方菜单项放行', () => {
@@ -119,4 +119,29 @@ describe('buildMoreBranch —— 「更多」：label 唯一平铺，重名收�
       children: [{ label: '签到', action: 'third-party', owner: '插件A' }],
     });
   });
+});
+
+test('喂食移动日常菜品和指定时节菜品，保留其他时节动作', () => {
+  const animations = {
+    idle: [],
+    turn: [],
+    drag: [],
+    clicks: [],
+    moves: { actions: [] },
+    categories: [
+      { id: '吃什么', weight: 16, actions: ['吃白饭', '涮火锅'] },
+      { id: '时节', weight: 14, actions: ['吃粽子', '写福字', '吃饺子'] },
+    ],
+  } as Parameters<typeof growthMenuBranch>[0] & object;
+  const menu = growthMenuBranch(animations);
+  const feed = menu.children.find((item) => item.label === '喂食');
+  assert.deepEqual(feed && 'children' in feed ? feed.children.map((item) => item.label) : [], [
+    '吃白饭',
+    '涮火锅',
+    '吃粽子',
+    '吃饺子',
+  ]);
+  assert.deepEqual(buildMenuTree(animations), [
+    { label: '动作', children: [{ label: '时节', children: [{ label: '写福字', anim: '写福字' }] }] },
+  ]);
 });

@@ -53,7 +53,7 @@ const bubbleCss = [
     'font-size:var(--f);line-height:1.6;z-index:3;pointer-events:none;' +
     'box-shadow:0 calc(var(--f)*0.1978) calc(var(--f)*0.7692) rgba(0,0,0,.14),0 1px 3px rgba(0,0,0,.08);' +
     'backdrop-filter:blur(6px);opacity:0;transition:opacity .25s ease;' +
-    'white-space:normal;overflow-wrap:break-word}',
+    'white-space:pre-line;overflow-wrap:break-word}',
   // 底部尾巴：小三角指向下方宠物，尺寸锚字号。
   '.dsh-pet-bubble::after{content:"";position:absolute;left:50%;bottom:calc(var(--f)*-0.3736);' +
     'transform:translateX(-50%);border:calc(var(--f)*0.3736) solid transparent;' +

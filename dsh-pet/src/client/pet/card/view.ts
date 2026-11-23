@@ -6,6 +6,8 @@
  * @module dsh-pet/src/client/pet/card/view
  */
 import { PET_HIT_STYLE } from '../motion/geometry.ts';
+import { GROWTH_HUD, GROWTH_TRACK, GROWTH_FILL, isLevelUpAnimation, growthPercent } from '../../../shared/growth.ts';
+import type { GrowthSnapshot } from '../../../shared/growth.ts';
 import { TOOLTIP_CLASS } from '../../../shared/tooltip.ts';
 import type { CSSProperties, ReactNode } from 'react';
 import type * as ReactNS from 'react';
@@ -44,6 +46,8 @@ export interface CardViewProps {
   stageStyle: CSSProperties;
   /** 当前该挂的气泡；null 表示无气泡。 */
   bubble: ReactNode;
+  growth: GrowthSnapshot;
+  animation: string;
   /** 悬浮提示是否点亮。 */
   tipOn: boolean;
   /** 宠物名：悬浮提示内容，同时作为命中区的无障碍名称。 */
@@ -77,9 +81,11 @@ export function makeCardView(rt: { h: typeof jsx }) {
   const { h } = rt;
 
   return function CardView(props: CardViewProps) {
+    const { level, xp, xpToLevel } = props.growth;
     return h('div', {
       ref: props.rootRef,
       className: 'dsh-pet-root',
+      'data-level-up': isLevelUpAnimation(props.animation) ? '' : undefined,
       'data-corner': props.corner,
       'data-facing': props.facing,
       style: Object.assign(
@@ -101,6 +107,20 @@ export function makeCardView(rt: { h: typeof jsx }) {
           className: 'dsh-pet-stage',
           style: props.stageStyle,
           children: [
+            h('div', {
+              className: GROWTH_HUD,
+              children: [
+                h('span', { children: 'Lv.' + level }),
+                h('span', {
+                  className: GROWTH_TRACK,
+                  role: 'progressbar',
+                  'aria-label': '升级经验',
+                  'aria-valuenow': xp,
+                  'aria-valuemax': xpToLevel,
+                  children: h('span', { className: GROWTH_FILL, style: { width: growthPercent(props.growth) + '%' } }),
+                }),
+              ],
+            }),
             h('video', Object.assign({}, VIDEO_PROPS, { ref: props.videoARef, className: 'dsh-pet-video is-front' })),
             h('video', Object.assign({}, VIDEO_PROPS, { ref: props.videoBRef, className: 'dsh-pet-video' })),
             h('div', {

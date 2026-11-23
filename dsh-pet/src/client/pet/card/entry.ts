@@ -360,7 +360,7 @@ export function createCardEntry(rt: CardEntryRuntime) {
         { label: '待办事项', action: 'todo', hint: TODO_HOTKEY_HINT },
         { label: '碎碎念', action: 'whisper' },
         { label: '对话', action: 'chat', hint: CHAT_HOTKEY_HINT },
-        growthMenuBranch(),
+        growthMenuBranch(cfgRef.current.animations),
         ...(memes ? [memes] : []),
         ...(canSleep ? [sleepItem] : []),
       ];

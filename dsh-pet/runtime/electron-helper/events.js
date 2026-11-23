@@ -31,7 +31,11 @@ PetSprite.prototype.onWorkTick = function onWorkTick(snapshot, tick) {
     // （loop=true），正常不触发 ended；这里不切动画，链就拿不到推进信号，
     // 宠物会卡在那段工作动画上。只改当前段：它结束后走 handleEnded → playIdle。
     // 睡觉时前台那段是睡姿循环：改掉它的 loop/onended 会既打断睡姿又把随机链拽回来，跳过。
-    if (!this.sleeping && S.poolIncludes(this.animations.events?.workStatus ?? [], this.anim)) {
+    if (
+      !this.sleeping &&
+      !S.growthLoop(this.growth) &&
+      S.poolIncludes(this.animations.events?.workStatus ?? [], this.anim)
+    ) {
       const frontEl = this.front === 0 ? this.videoA : this.videoB;
       if (frontEl) {
         frontEl.loop = false;
@@ -71,7 +75,6 @@ PetSprite.prototype.onWorkTick = function onWorkTick(snapshot, tick) {
       '] ' +
       name,
   );
-  this.stopMove();
   // 气泡文本：任务详情优先，否则从条目级 workStatusTexts[档位] 随机抽一句；整档缺失则只播动画。
   const textGroup = Array.isArray(this.pet.workStatusTexts) ? this.pet.workStatusTexts[idx] : undefined;
   const configuredText =
@@ -93,7 +96,8 @@ PetSprite.prototype.onWorkTick = function onWorkTick(snapshot, tick) {
   }
   this.renderBubble();
   // 睡觉：气泡与 workState 已经更新，动画不换——自动来源不该打断睡姿（睡姿循环归睡觉状态机）。
-  if (this.sleeping) return;
+  if (this.sleeping || S.growthLoop(this.growth)) return;
+  this.stopMove();
   // 循环语义：终态播一遍回 idle；非终态多候选档位播一遍 → ended 轮换到下一候选；
   // 非终态单候选档位无限循环。
   const rotating = !terminal && Array.isArray(slot) && slot.length > 1;
@@ -443,6 +447,10 @@ function applyLockLeaf(petId, leaf) {
 
 /** 睡觉叶子 → 对应宠物进睡/醒来。它同样是状态而不是指令：三段名由宿主挑定，sprite 只照播并
  *  自己推进「开始（一次）→ 循环（无限）→ 起来（一次）」——视频播完只有渲染端知道。 */
+function applyGrowthLeaf(petId, leaf) {
+  sprites.find((sprite) => sprite.pet.id === petId)?.setGrowth(S.readGrowth(leaf));
+}
+
 function applySleepLeaf(petId, leaf) {
   const data = leaf && leaf.data;
   if (!data || typeof data !== 'object') return;
@@ -490,6 +498,7 @@ async function pollStateOnce() {
       // 否则渲染端显示醒着，而宿主因「已在睡」不回写叶子，只能等宿主重启才恢复。
       for (const [petId, entry] of Object.entries((s && s.pets) || {})) {
         if (entry && entry.sleep && entry.sleep.data !== null) applySleepLeaf(petId, entry.sleep);
+        if (entry?.growth) applyGrowthLeaf(petId, entry.growth);
       }
       return true;
     }
@@ -514,6 +523,8 @@ async function pollStateOnce() {
       } else if (change.path.startsWith('pets.') && change.path.endsWith('.lock')) {
         // 占用锁：同上切片，绝不 split('.')。它是状态而不是指令（见 applyLockLeaf）
         applyLockLeaf(change.path.slice('pets.'.length, -'.lock'.length), change.leaf);
+      } else if (change.path.startsWith('pets.') && change.path.endsWith('.growth')) {
+        applyGrowthLeaf(change.path.slice('pets.'.length, -'.growth'.length), change.leaf);
       } else if (change.path.startsWith('pets.') && change.path.endsWith('.sleep')) {
         // 睡觉：同上切片。它是状态而不是指令（见 applySleepLeaf）
         applySleepLeaf(change.path.slice('pets.'.length, -'.sleep'.length), change.leaf);

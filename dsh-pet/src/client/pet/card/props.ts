@@ -10,6 +10,7 @@ import type { PetCollisionSlot } from '../../../shared/physics.ts';
 import type { LockState, PositionMode, SayCue, PetFacing, SleepState, EnvState } from '../../../shared/state.ts';
 import type { MenuMoreItem } from '../../../shared/menu.ts';
 import type { WorkStatusSnapshot } from '../../../shared/work-status.ts';
+import type { GrowthSnapshot } from '../../../shared/growth.ts';
 import type { RuntimePet } from '../types.ts';
 
 /** 一张宠物卡的渲染输入。 */
@@ -58,6 +59,7 @@ export interface PetCardProps {
   lockTick: number;
   /** 本宠物的睡觉状态：三段名字由宿主挑定；睡着时随机链停住、自动来源闭嘴。 */
   sleep?: SleepState;
+  growth?: GrowthSnapshot;
   /** 睡觉叶子变化次数。 */
   sleepTick: number;
   /** 第三方菜单项快照；传 ref 是因为只在右键那一刻读。 */

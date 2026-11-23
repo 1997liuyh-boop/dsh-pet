@@ -5,6 +5,7 @@
  * 不变量：只有计数器变化才动手；占用锁生效时自动来源整拍丢弃，显式指令不挡。
  * @module dsh-pet/src/client/pet/card/cue-effects
  */
+import { growthLoop } from '../../../shared/growth.ts';
 import { balanceEventIndex, balancePercent } from '../../../shared/balance/index.ts';
 import { pickSlot, poolIncludes } from '../../../shared/pickers.ts';
 import { WORK_STATUS_INDEX } from '../../../shared/work-status.ts';
@@ -138,7 +139,8 @@ export function createCueEffects(rt: CueEffectsRuntime) {
         prevWorkStateRef.current = null;
         // 回空闲时把循环中的工作动画改成「播完即停」：否则 ended 永不触发，动画链拿不到
         // 推进信号，宠物会一直卡在工作动画上。
-        if (poolIncludes(hub.anims().events?.workStatus ?? [], card.animRef.current)) hub.ownAnim.stopLoopingFront();
+        if (!growthLoop(props.growth) && poolIncludes(hub.anims().events?.workStatus ?? [], card.animRef.current))
+          hub.ownAnim.stopLoopingFront();
         hub.bubbles.resetWork();
         return;
       }
@@ -157,7 +159,6 @@ export function createCueEffects(rt: CueEffectsRuntime) {
       log('pet=' + cfg.id + ' ' + (prevWorkStateRef.current ?? 'null') + '->' + workStatus.state + '    ' + name);
       const stateChanged = prevWorkStateRef.current !== workStatus.state;
       prevWorkStateRef.current = workStatus.state;
-      hub.stopMotion();
       // 气泡文本：任务详情优先，否则从 workStatusTexts[档位] 随机抽一句。
       const textGroup = Array.isArray(cfg.workStatusTexts) ? cfg.workStatusTexts[idx] : undefined;
       const configuredText =
@@ -169,6 +170,8 @@ export function createCueEffects(rt: CueEffectsRuntime) {
       const terminal = workStatus.state === 'success' || workStatus.state === 'error';
       // 只在状态变化时点亮或收起气泡：同状态后续 tick 不重新点亮已自动收起的终态气泡。
       if (stateChanged) hub.bubbles.lightWork(terminal);
+      if (growthLoop(props.growth)) return;
+      hub.stopMotion();
       // 循环语义：终态播一遍；非终态单候选无限循环，多候选播一遍后由播完判定轮换。
       const rotating = !terminal && Array.isArray(slot) && slot.length > 1;
       card.actions.setOnce(terminal || rotating);

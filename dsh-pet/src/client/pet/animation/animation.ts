@@ -6,6 +6,7 @@
  * 必须始终成立：同一时刻只有一个 pending 换源（世代号丢弃迟到的加载），且回执先于任何 return 上报。
  * @module dsh-pet/src/client/pet/animation/animation
  */
+import { growthAnimationAsset, isLevelUpAnimation } from '../../../shared/growth.ts';
 import { isEventAnim } from '../../../shared/pickers.ts';
 import { decideEndedCue, type EndedCue, type FreezeCue } from './cues.ts';
 import type { ReportableStatus } from '../../../shared/playback.ts';
@@ -32,6 +33,7 @@ const stamp = (petId: string): string => new Date().toTimeString().slice(0, 8) +
 
 /** 挂起的换源：世代号用于丢弃迟到的加载结果。 */
 interface PendingSwap {
+  cue: string | null;
   anim: string;
   once: boolean;
   gen: number;
@@ -85,6 +87,7 @@ export interface OwnAnimation {
   frontVideo: () => HTMLVideoElement | null;
   /** 正在播的点播编号；自播动画为 `null`。 */
   playingPlayback: () => string | null;
+  hasPlayback: () => boolean;
   /** 卸载清理：中断在途请求、释放 blob，之后不可再用。 */
   dispose: () => void;
 }
@@ -146,7 +149,7 @@ export function createOwnAnimation(deps: OwnAnimationDeps): OwnAnimation {
       console.log('[dsh-pet] ' + stamp(cfg.id) + ' switch ' + next + ' once=' + nextOnce);
     }
     const swapGen = (gen += 1);
-    pending = { anim: next, once: nextOnce, gen: swapGen };
+    pending = { anim: next, once: nextOnce, gen: swapGen, cue: cuePlaybackId };
     const targetIndex = front === 0 ? 1 : 0;
     const el = elementOf(targetIndex);
     if (el === null) return;
@@ -156,13 +159,19 @@ export function createOwnAnimation(deps: OwnAnimationDeps): OwnAnimation {
     el.playsInline = true;
     el.onended = nextOnce ? (event: Event) => deps.onEnded(handleEnded(event)) : null;
     // 元素级解码失败只补一条回执，不改播放控制；换源时与 onended 一起清掉。
-    el.onerror = cuePlaybackId === null ? null : () => reportOnce(cuePlaybackId, 'failed', REASON_DECODE);
+    el.onerror = () => {
+      if (cuePlaybackId !== null) reportOnce(cuePlaybackId, 'failed', REASON_DECODE);
+      if (isLevelUpAnimation(next) && gen === swapGen) {
+        pending = null;
+        deps.onEnded({ kind: 'event-done' });
+      }
+    };
     // fetch + blob 一次拿全文件，绕开 video 流式加载在 DSH WebServer 上偶发的 stalled。
     const assetUrl = animationAssetUrl({
       cueUrl: url,
       assetRoot: cfg.assetRoot ?? '',
       id: cfg.id,
-      anim: next,
+      anim: growthAnimationAsset(next),
       ext: thumbExt(),
     });
     loader.load(assetUrl, {
@@ -187,6 +196,7 @@ export function createOwnAnimation(deps: OwnAnimationDeps): OwnAnimation {
         if (pending?.gen !== swapGen) return; // 已被更新的切换覆盖。
         pending = null; // 释放挂起的换源，避免后续点击困在防重循环里。
         if (cuePlaybackId !== null) reportOnce(cuePlaybackId, 'failed', REASON_ASSET_LOAD);
+        if (isLevelUpAnimation(next)) deps.onEnded({ kind: 'event-done' });
         console.warn(
           '[dsh-pet] 素材加载失败 pet=' +
             cfg.id +
@@ -223,6 +233,7 @@ export function createOwnAnimation(deps: OwnAnimationDeps): OwnAnimation {
         })
         .catch(() => {
           if (cuePlaybackId !== null) reportOnce(cuePlaybackId, 'failed', REASON_PLAY_REJECTED);
+          if (isLevelUpAnimation(next) && gen === swapGen) deps.onEnded({ kind: 'event-done' });
         });
       deps.onFrontReady(el);
     };
@@ -284,6 +295,7 @@ export function createOwnAnimation(deps: OwnAnimationDeps): OwnAnimation {
     isFrozen: () => frozen,
     frontVideo,
     playingPlayback: () => playing,
+    hasPlayback: () => Boolean(playing || pending?.cue),
     dispose: () => {
       mounted = false;
       loader.abortAll();

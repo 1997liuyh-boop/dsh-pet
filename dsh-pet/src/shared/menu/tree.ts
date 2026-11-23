@@ -1,3 +1,4 @@
+import { GROWTH_EVENT } from '../growth.ts';
 /**
  * 菜单树构建：从动画清单与第三方注册项拼出层级，并做镜像动画过滤。
  *
@@ -5,6 +6,13 @@
  * 必须始终成立：同一份输入必得同一棵树，层级顺序稳定。
  * @module dsh-pet/src/shared/menu/tree
  */
+import {
+  GROWTH_PROJECTS,
+  growthFeedActions,
+  growthPlayActions,
+  isGrowthFood,
+  PLAY_CATEGORY,
+} from '../growth-projects.ts';
 import { DISPLAY_HOTKEY_HINTS, DISPLAY_ORDER } from '../display-hotkey.ts';
 import { type Animations, type Category, type PetDisplay } from '../types.ts';
 import type { MenuBranch, MenuLeaf, MenuMoreItem, MenuNode } from './types.ts';
@@ -42,17 +50,48 @@ export const displayMenuBranch = (): MenuBranch => ({
 
 /** 第三方菜单项统一收在这个一级菜单下（宿主自己的菜单项不进这里）。 */
 /** 网页和桌面共用的养成菜单。 */
-export const growthMenuBranch = (): MenuBranch => ({
-  label: '宠物养成',
-  children: [
-    { label: '查看状态', action: 'growth', growthCommand: 'status' },
-    { label: '开始学习', action: 'growth', growthCommand: 'study' },
-    { label: '开始工作', action: 'growth', growthCommand: 'work' },
-    { label: '一起玩耍', action: 'growth', growthCommand: 'play' },
-    { label: '喂食', action: 'growth', growthCommand: 'feed' },
-    { label: '结束活动', action: 'growth', growthCommand: 'stop' },
-  ],
-});
+export function growthMenuBranch(animations?: Animations): MenuBranch {
+  const playActions = growthPlayActions(animations);
+  const foodActions = growthFeedActions(animations);
+  return {
+    label: '宠物养成',
+    children: [
+      { label: '查看状态', action: 'growth', growthCommand: 'status' },
+      ...(['work', 'study'] as const).map((kind): MenuBranch => ({
+        label: kind === 'work' ? '工作' : '学习',
+        children: GROWTH_PROJECTS[kind].map(({ id, label }) => ({
+          label,
+          action: 'growth',
+          growthCommand: kind,
+          growthProject: id,
+        })),
+      })),
+      playActions.length > 0
+        ? {
+            label: '玩耍',
+            children: playActions.map((name): MenuLeaf => ({
+              label: name,
+              action: 'growth',
+              growthCommand: 'play',
+              growthProject: name,
+            })),
+          }
+        : { label: '玩耍', action: 'growth', growthCommand: 'play' },
+      foodActions.length > 0
+        ? {
+            label: '喂食',
+            children: foodActions.map((name): MenuLeaf => ({
+              label: name,
+              action: 'growth',
+              growthCommand: 'feed',
+              growthProject: name,
+            })),
+          }
+        : { label: '喂食', action: 'growth', growthCommand: 'feed' },
+      { label: '结束活动', action: 'growth', growthCommand: 'stop' },
+    ],
+  };
+}
 
 export const MORE_MENU_LABEL = '更多';
 
@@ -114,7 +153,6 @@ const EVENT_LABELS: Record<string, string> = {
   balance: '余额档位',
   whisper: '碎碎念',
   workStatus: '工作状态',
-  levelUp: '养成',
 };
 
 /** 把动画名包成叶子。 */
@@ -134,13 +172,17 @@ export function buildMenuTree(animations: Animations): MenuNode[] {
     if (pool.length) groups.push({ label, children: pool.map(leaf) });
   }
   // 随机动作分类：noMirror 分类照样可点播，播放端朝右时强制朝左（见 isNoMirrorAnimation）
-  const cats = (animations.categories ?? []).filter((c) => c.actions.length > 0);
+  const cats = (animations.categories ?? []).filter(
+    (c) => c && c.id !== PLAY_CATEGORY && Array.isArray(c.actions) && c.actions.length > 0,
+  );
   for (const c of cats) {
-    groups.push({ label: c.id, children: c.actions.map(leaf) });
+    const actions = c.actions.filter((name) => !isGrowthFood(c.id, name));
+    if (actions.length) groups.push({ label: c.id, children: actions.map(leaf) });
   }
   // 事件动画：每个事件一个分类，不来自随机链；数组槽位展平为逐个叶子，候选都可点播预览。
   const events = animations.events ?? {};
   for (const key of Object.keys(events)) {
+    if (key === GROWTH_EVENT) continue;
     const pool = events[key] ?? [];
     const names: string[] = [];
     for (const slot of pool) {

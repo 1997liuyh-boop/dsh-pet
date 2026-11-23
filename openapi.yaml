@@ -3210,7 +3210,8 @@ paths:
       summary: 查看或操作宠物养成状态
       description: |
         养成进度按宠物保存，桌面和网页共用。成功时返回状态与气泡文案供请求端展示。
-        学习与工作每 30 秒结算一段，单轮最多 5 分钟。饱食度在 0 到 100 之间，越低越饿。
+        学习与工作每 30 秒结算一段，单轮最多 5 分钟。工作中可以切换工作项目，沿用本轮剩余时间。
+        饱食度在 0 到 100 之间，越低越饿。
       parameters:
         - $ref: "#/components/parameters/PetIdQuery"
         - $ref: "#/components/parameters/SurfaceQuery"
@@ -3226,6 +3227,11 @@ paths:
                 command:
                   type: string
                   enum: [status, study, work, play, feed, stop]
+                project:
+                  type: string
+                  description: 可选。工作或学习项目的标识，或当前宠物养成菜单下的玩耍、喂食动作名。
+                # 工作项目标识：copywriting、video-editing、coding、carry-token。
+                # 学习项目标识：drawing、calligraphy、singing、mixology。
       responses:
         "200":
           description: 当前养成进度或业务失败
@@ -3250,7 +3256,8 @@ paths:
                           fullness: { type: integer, minimum: 0, maximum: 100 }
                           mood: { type: integer, minimum: 0, maximum: 100 }
                           hungry: { type: boolean }
-                          activity: { enum: [study, work, null] }
+                          activity: { enum: [study, work, play, null] }
+                          project: { type: string, description: 当前选中的养成项目 }
                           activitySeconds: { type: integer, minimum: 0 }
                           playCooldownSeconds: { type: integer, minimum: 0 }
         "400":

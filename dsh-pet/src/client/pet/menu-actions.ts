@@ -122,7 +122,7 @@ export function createMenuActions(deps: MenuActionDeps): MenuActions {
     }
     if (leaf.action === 'growth') {
       const url = ROUTE_PATH + '/growth?pet=' + encodeURIComponent(petId) + '&surface=web';
-      void requestGrowth(url, leaf.growthCommand).then((message) => deps.say?.(message));
+      void requestGrowth(url, leaf.growthCommand, leaf.growthProject).then((message) => deps.say?.(message));
       return;
     }
     if (leaf.action === 'third-party') {
